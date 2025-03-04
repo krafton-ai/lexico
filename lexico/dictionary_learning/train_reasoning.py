@@ -37,7 +37,7 @@ def load_task_dataset(task: str) -> Dict[str, List[str]]:
     if task == "gsm8k":
         dataset = load_dataset("gsm8k", "main")
         # Format the examples as needed for the model
-        format_example = lambda ex: f"Question: {ex['question']}\nLet's solve this step by step:\n{ex['answer']}"
+        format_example = lambda ex: f"Question: {ex['question']}\nLet's think step by step and output the final answer after \"####\"."
         return {
             "train": [format_example(ex) for ex in dataset["train"]],
             "test": [format_example(ex) for ex in dataset["test"]]
