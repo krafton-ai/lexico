@@ -15,7 +15,6 @@ class BaseBuffer:
         self.text_pointer = 0
         self.pointer = 0
         random.shuffle(self.texts)
-        self.refresh()
 
     def next(self):
         out = self.buffer[self.pointer:self.pointer + self.cfg["batch_size"]]
@@ -47,6 +46,10 @@ class BaseBuffer:
 
 class UniversalBuffer(BaseBuffer):
     """Buffer for universal dictionary training"""
+    def __init__(self, cfg: Dict[str, Any], model: AutoModelForCausalLM, tokenizer: AutoTokenizer, dataset: List[str]):
+        super().__init__(cfg, model, tokenizer, dataset)
+        self.refresh()
+
     @torch.no_grad()
     def refresh(self):
         self.pointer = 0
@@ -81,9 +84,12 @@ class ReasoningBuffer(BaseBuffer):
     """Buffer for task-specific dictionary training with generation"""
     def __init__(self, cfg: Dict[str, Any], model: AutoModelForCausalLM, tokenizer: AutoTokenizer, dataset: List[str]):
         super().__init__(cfg, model, tokenizer, dataset)
-        self.temperature = cfg["temperature"]
-        self.num_samples = cfg["num_samples"]
+        # Initialize generation parameters with defaults if not in cfg
+        self.temperature = cfg.get("temperature", 0.7)
+        self.num_samples = cfg.get("num_samples", 3)
         self.max_new_tokens = cfg.get("max_new_tokens", 512)
+        # Call refresh after all parameters are set
+        self.refresh()
         
     @torch.no_grad()
     def refresh(self):
