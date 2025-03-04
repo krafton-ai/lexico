@@ -37,6 +37,8 @@ class BaseBuffer:
         """
         Create attention mask for both input and generated tokens.
         Masks padding tokens in the input and garbage tokens in the output (tokens after EOS).
+        Note: The mask is truncated by one token at the end to match the KV cache size,
+        as past_key_values does not include the last token's cache.
         
         Args:
             input_ids: Input token IDs [batch_size, input_length]
@@ -45,16 +47,16 @@ class BaseBuffer:
             eos_token_id: The ID of the EOS token
             
         Returns:
-            Combined attention mask [batch_size, total_length]
+            Combined attention mask [batch_size, total_length - 1]
         """
         batch_size = input_ids.shape[0]
         gen_length = gen_sequences.shape[1] - input_ids.shape[1]
         
-        # Initialize output mask with the input attention mask
-        full_attention_mask = input_attention_mask.clone()
+        # Initialize output mask with the input attention mask, excluding the last token
+        full_attention_mask = input_attention_mask[:, :-1].clone()
         
         # Initialize generation mask with ones (all tokens attended to by default)
-        gen_mask = torch.ones((batch_size, gen_length), dtype=torch.bool, device=self.device)
+        gen_mask = torch.ones((batch_size, gen_length - 1), dtype=torch.bool, device=self.device)
         
         # If eos_token_id is provided, mask out tokens after the first EOS token in each sequence
         if eos_token_id is not None:
