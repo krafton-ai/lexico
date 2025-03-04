@@ -4,12 +4,14 @@ import random
 import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from utils import Buffer
+from utils import UniversalBuffer
 from model import Autoencoder
 import argparse
 import pprint
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from typing import List, Dict, Any
+import os
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train layer-specific KV dictionaries through direct gradient-based optimization")
@@ -24,6 +26,14 @@ def parse_args():
     parser.add_argument("--buffer_mult", type=int, default=384, help="Multiplier determining buffer size for KV storage")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     return vars(parser.parse_args())
+
+def load_wikitext_dataset() -> Dict[str, List[str]]:
+    """Load WikiText-103 dataset"""
+    dataset = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1")
+    return {
+        "train": dataset["train"]["text"],
+        "test": dataset["test"]["text"]
+    }
 
 def main(cfg):
     SEED = cfg["seed"]
@@ -46,17 +56,20 @@ def main(cfg):
     
     autoencoder = Autoencoder(cfg)
 
+    # Create directory for dictionaries
+    os.makedirs('dictionaries', exist_ok=True)
+    
     writer = SummaryWriter(log_dir=f'runs/{cfg["name"]}')
 
-    texts_train = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1")["train"]["text"]
-    texts_test = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1")["test"]["text"]
-    buffer = Buffer(cfg, model, tokenizer, texts_train)
-    eval_buffer = Buffer(cfg, model, tokenizer, texts_test)
+    # Load dataset
+    datasets = load_wikitext_dataset()
+    buffer = UniversalBuffer(cfg, model, tokenizer, datasets["train"])
+    eval_buffer = UniversalBuffer(cfg, model, tokenizer, datasets["test"])
 
     optimizer = torch.optim.Adam(autoencoder.parameters(), lr=cfg["lr"])
     scheduler = CosineAnnealingLR(optimizer, T_max=cfg["num_epochs"], eta_min=0)
 
-    batches_per_epoch = len(texts_train) // cfg["batch_size"]
+    batches_per_epoch = len(datasets["train"]) // cfg["batch_size"]
 
     for epoch in range(cfg["num_epochs"]):
         for i in tqdm.trange(batches_per_epoch):

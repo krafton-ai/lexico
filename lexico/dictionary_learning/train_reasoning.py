@@ -4,7 +4,7 @@ import random
 import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from utils import Buffer
+from utils import ReasoningBuffer, UniversalBuffer
 from model import Autoencoder
 import argparse
 import pprint
@@ -28,59 +28,9 @@ def parse_args():
     parser.add_argument("--buffer_mult", type=int, default=384, help="Multiplier determining buffer size for KV storage")
     parser.add_argument("--temperature", type=float, default=0.7, help="Temperature for sampling during generation")
     parser.add_argument("--num_samples", type=int, default=3, help="Number of samples to generate per example")
+    parser.add_argument("--max_new_tokens", type=int, default=512, help="Maximum number of tokens to generate")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     return vars(parser.parse_args())
-
-class ReasoningBuffer(Buffer):
-    def __init__(self, cfg: Dict[str, Any], model: AutoModelForCausalLM, tokenizer: AutoTokenizer, dataset: List[str]):
-        super().__init__(cfg, model, tokenizer, dataset)
-        self.temperature = cfg["temperature"]
-        self.num_samples = cfg["num_samples"]
-        
-    def collect_kv_cache(self, texts: List[str]) -> torch.Tensor:
-        """Collect KV cache from forward pass and generation"""
-        with torch.no_grad():
-            # Tokenize batched inputs with padding
-            encoded_inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
-            input_ids = encoded_inputs["input_ids"].to(self.device)
-            attention_mask = encoded_inputs["attention_mask"].to(self.device)
-            
-            # Generate multiple samples and collect their KV caches
-            all_kv_caches = []
-            for _ in range(self.num_samples):
-                gen_outputs = self.model.generate(
-                    input_ids,
-                    attention_mask=attention_mask,
-                    max_new_tokens=512,  # Adjust based on task
-                    temperature=self.temperature,
-                    do_sample=True,
-                    output_attentions=True,
-                    use_cache=True,
-                    return_dict_in_generate=True
-                )
-                
-                # Extract KV cache from past_key_values
-                past_key_values = gen_outputs.past_key_values
-                kvs = []
-                for l in range(self.cfg["num_hidden_layers"]):
-                    keys, values = past_key_values[l]
-                    kvs.append(keys)
-                    kvs.append(values)
-                kvs = torch.stack(kvs).permute(1, 3, 2, 0, 4).reshape(-1, self.cfg["num_hidden_layers"] * 2, self.cfg["head_dim"])
-                
-                # Handle padding/masking using the attention mask
-                # For generation, we need to consider both input_ids and generated tokens
-                # The attention mask for generated tokens is all ones
-                gen_mask = torch.ones((input_ids.shape[0], gen_outputs.sequences.shape[1] - input_ids.shape[1]), 
-                                   dtype=torch.bool, device=self.device)
-                full_mask = torch.cat([attention_mask, gen_mask], dim=1)
-                mask = full_mask.view(-1, 1).repeat(1, self.cfg["num_key_value_heads"]).view(-1)
-                kvs = kvs[mask.bool()]
-                
-                all_kv_caches.append(kvs)
-            
-            # Concatenate all KV caches
-            return torch.cat(all_kv_caches, dim=0)
 
 def load_task_dataset(task: str) -> Dict[str, List[str]]:
     """Load dataset for specific task"""
