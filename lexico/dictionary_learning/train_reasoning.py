@@ -65,9 +65,6 @@ def main(cfg):
     cfg["name"] = f'{cfg["model_name_or_path"].replace("/", "_")}_{cfg["task"]}_N_{cfg["dictionary_size"]}_s_{cfg["sparsity"]}'
     
     autoencoder = Autoencoder(cfg)
-
-    # Create task-specific directory for dictionaries
-    os.makedirs(f'dictionaries/{cfg["task"]}', exist_ok=True)
     
     writer = SummaryWriter(log_dir=f'runs/{cfg["name"]}')
 
