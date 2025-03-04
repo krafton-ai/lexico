@@ -83,7 +83,9 @@ def main(cfg):
     optimizer = torch.optim.Adam(autoencoder.parameters(), lr=cfg["lr"])
     scheduler = CosineAnnealingLR(optimizer, T_max=cfg["num_epochs"], eta_min=0)
 
-    batches_per_epoch = len(datasets["train"]) // cfg["batch_size"]
+    # Calculate number of batches per epoch
+    # For ReasoningBuffer, each input generates num_samples different KV caches
+    batches_per_epoch = (len(datasets["train"]) * cfg.get("num_samples", 3)) // cfg["batch_size"]
 
     for epoch in range(cfg["num_epochs"]):
         for i in tqdm.trange(batches_per_epoch):
