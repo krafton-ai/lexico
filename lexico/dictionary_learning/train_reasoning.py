@@ -30,6 +30,8 @@ def parse_args():
     parser.add_argument("--num_samples", type=int, default=3, help="Number of samples to generate per example")
     parser.add_argument("--max_new_tokens", type=int, default=512, help="Maximum number of tokens to generate")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--pretrained_dict", type=str, default=None, 
+                        help="Path to pretrained dictionary checkpoint to finetune (can be a full model path or just the dictionary)")
     return vars(parser.parse_args())
 
 def load_task_dataset(task: str) -> Dict[str, List[str]]:
@@ -65,6 +67,20 @@ def main(cfg):
     cfg["name"] = f'{cfg["model_name_or_path"].replace("/", "_")}_{cfg["task"]}_N_{cfg["dictionary_size"]}_s_{cfg["sparsity"]}'
     
     autoencoder = Autoencoder(cfg)
+    
+    if cfg["pretrained_dict"] is not None:
+        pretrained_dict_path = cfg["pretrained_dict"]
+        print(f"Loading pretrained dictionary from {pretrained_dict_path} for fine-tuning on {cfg['task']}")
+        
+        pretrained_name = os.path.basename(pretrained_dict_path).replace(".pt", "")
+        cfg["name"] = f'{pretrained_name}_finetuned_{cfg["task"]}'
+        
+        try:
+            autoencoder = Autoencoder.load(pretrained_dict_path, cfg)
+            print(f"Loaded model state for fine-tuning on {cfg['task']}")
+        except Exception as e:
+            print(f"Error loading pretrained dictionary: {e}")
+            print("Initializing with a new dictionary instead.")
     
     writer = SummaryWriter(log_dir=f'runs/{cfg["name"]}')
 
