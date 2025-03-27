@@ -37,6 +37,57 @@ class Autoencoder(nn.Module):
         k_hat = self.decode(y)
         loss = torch.mean((k_hat - k) ** 2)
         return loss, k_hat, y
+
+    @torch.no_grad()
+    def closed_form_update(self, k, y):
+        """
+        Solve for self.D in closed-form, given:
+        - k of shape (B, L, m)
+        - y of shape (B, L, n)
+        Then apply column-normalization.
+        """
+        B, L, m = k.shape
+        _, _, n = y.shape
+        # Sanity check that L == self.L, etc.
+        assert L == self.L, "Mismatch in number of layers"
+
+        # For each layer, do the closed-form least squares:
+        for l in range(L):
+            # Grab the slice for layer l
+            # k_l: (B, m),   y_l: (B, n)
+            k_l = k[:, l, :]  # shape (B, m)
+            y_l = y[:, l, :]  # shape (B, n)
+
+            # D[l] is (m, n)
+            # D[l] = (k_l^T * y_l) * (y_l^T * y_l)^(-1)
+            # or use torch.linalg.lstsq if you prefer a pseudo-inverse approach.
+
+            # shape checks:
+            # k_l.T: (m, B)
+            # y_l:   (B, n)
+            # => (m, n)
+            k_l_t = k_l.transpose(0, 1)  # shape (m, B)
+            y_l_t = y_l.transpose(0, 1)  # shape (n, B)
+
+            # Normal equations approach
+            # We can do pinverse or direct inverse:
+            # (y_l^T y_l) is (n, n)
+            # (k_l^T y_l) is (m, n)
+            yty = y_l_t @ y_l  # (n, n)
+            kty = k_l_t @ y_l  # (m, n)
+
+            # Regular invert or safe pseudo-inverse if rank-deficient
+            # We do a small ridge if needed, or just inverse if guaranteed full-rank
+            # E.g.: yty_inv = torch.inverse(yty + 1e-5 * torch.eye(n, device=yty.device))
+            yty_inv = torch.linalg.pinv(yty)  # safer than .inverse()
+
+            D_l = kty @ yty_inv  # shape (m, n)
+
+            self.D[l].data = D_l  # Assign back
+
+        # Now normalize columns of each D[l] to unit norm (same as normalise_decoder_weights)
+        # self.D is shape (L, m, n)
+        self.D.data[:] = self.D / self.D.norm(dim=-2, keepdim=True)
     
     @torch.no_grad()
     def normalise_decoder_weights(self):

@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("--buffer_mult", type=int, default=384, help="Multiplier determining buffer size for KV storage")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--update_mode", type=str, choices=["gradient", "closed_form"], default="gradient", help="Method to update dictionary")
     return vars(parser.parse_args())
 
 def main(cfg):
@@ -61,11 +62,23 @@ def main(cfg):
     for epoch in range(cfg["num_epochs"]):
         for i in tqdm.trange(batches_per_epoch):
             kvs = buffer.next()
-            loss, k_hat, y = autoencoder(kvs)
-            loss.backward()
-            autoencoder.normalise_decoder_weights()
-            optimizer.step()
-            optimizer.zero_grad()
+
+            if cfg["update_mode"] == "gradient":
+                loss, k_hat, y = autoencoder(kvs)
+                loss.backward()
+                autoencoder.normalise_decoder_weights()
+                optimizer.step()
+                optimizer.zero_grad()
+            else:
+                # --- Closed-form approach ---
+                # 1) Encode using OMP -> y
+                with torch.no_grad():
+                    y = autoencoder.encode(kvs)  # shape (B, L, n)
+                # 2) Update self.D in closed-form
+                autoencoder.closed_form_update(kvs, y)
+                # 3) Compute the loss purely for logging
+                loss, k_hat, _ = autoencoder(kvs)
+
             loss_value = loss.item()
 
             writer.add_scalar('Loss/train', loss.item(), epoch * batches_per_epoch + i)
