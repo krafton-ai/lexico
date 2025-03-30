@@ -6,7 +6,7 @@ from lexico.cache_utils import LexicoCacheConfig, LexicoCache
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model_name_or_path = "meta-llama/Llama-3.2-3B-Instruct"
+model_name_or_path = "meta-llama/Llama-3.1-8B-Instruct"
 
 config = AutoConfig.from_pretrained(
     model_name_or_path,
@@ -17,9 +17,11 @@ compression_args = {
     "low_cpu_mem_usage": True,
     "buffer_length": 1,
     "approximation_length": 1,
-    "max_sparsity": 8,
+    "key_max_sparsity": 4,
+    "value_max_sparsity": 16,
     "dictionary_size": 4096,
-    "error_threshold": None,
+    "key_error_threshold": None,
+    "value_error_threshold": None,
     "dictionary_device": "cuda",
 }
 
@@ -42,8 +44,10 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
 cache_config = LexicoCacheConfig(
-    max_sparsity=compression_args.get("max_sparsity", 8),
-    error_threshold=compression_args.get("error_threshold", None),
+    key_max_sparsity=compression_args.get("key_max_sparsity", 8),
+    value_max_sparsity=compression_args.get("value_max_sparsity", 8),
+    key_error_threshold=compression_args.get("key_error_threshold", None),
+    value_error_threshold=compression_args.get("value_error_threshold", None),
     buffer_length=compression_args.get("buffer_length", 1),
     approximation_length=compression_args.get("approximation_length", 1),
 )

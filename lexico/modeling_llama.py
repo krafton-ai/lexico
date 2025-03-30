@@ -1189,8 +1189,10 @@ class LlamaForCausalLMLexico(LlamaPreTrainedModel, GenerationMixinLexico):
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.cache_config = {
-            "max_sparsity": getattr(config, "max_sparsity", 16), 
-            "error_threshold": getattr(config, "error_threshold", None),
+            "key_max_sparsity": getattr(config, "key_max_sparsity", 16), 
+            "value_max_sparsity": getattr(config, "value_max_sparsity", 16), 
+            "key_error_threshold": getattr(config, "key_error_threshold", None),
+            "value_error_threshold": getattr(config, "value_error_threshold", None),
             "buffer_length": getattr(config, "buffer_length", 128), 
             "approximation_length": getattr(config, "approximation_length", 1)
         }
@@ -1203,7 +1205,7 @@ class LlamaForCausalLMLexico(LlamaPreTrainedModel, GenerationMixinLexico):
         with open(os.path.join(os.path.dirname(__file__), "path_to_dictionary.json"), "r") as f:
             path_to_dictionary = json.load(f)
 
-        config_key = f"{getattr(config, '_name_or_path', 'meta-llama/Llama-3.2-1B-Instruct')}_N_{getattr(config, 'dictionary_size', 4096)}_s_{getattr(config, 'max_sparsity', 16)}"
+        config_key = f"{getattr(config, '_name_or_path', 'meta-llama/Llama-3.2-1B-Instruct')}_N_{getattr(config, 'dictionary_size', 4096)}_s_{max(getattr(config, 'key_max_sparsity', 16), getattr(config, 'value_max_sparsity', 16))}"
         dictionary_path = os.path.join(os.path.dirname(__file__), path_to_dictionary.get(config_key))
 
         if dictionary_path is None:

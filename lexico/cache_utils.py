@@ -11,13 +11,17 @@ from lexico.omp import omp
 class LexicoCacheConfig(CacheConfig):
     def __init__(
         self,
-        max_sparsity: Optional[int] = 14,
-        error_threshold: Optional = None,
+        key_max_sparsity: Optional[int] = 14,
+        value_max_sparsity: Optional[int] = 14,
+        key_error_threshold: Optional = None,
+        value_error_threshold: Optional = None,
         buffer_length: Optional[int] = 128,
         approximation_length: Optional[int] = 32,
     ):
-        self.max_sparsity = max_sparsity
-        self.error_threshold = error_threshold
+        self.key_max_sparsity = key_max_sparsity
+        self.value_max_sparsity = value_max_sparsity
+        self.key_error_threshold = key_error_threshold
+        self.value_error_threshold = value_error_threshold
         self.buffer_length = buffer_length
         self.approximation_length = approximation_length
     
@@ -65,8 +69,10 @@ class LexicoCache(DynamicCache):
         self._value_cache_col_indices: List[torch.Tensor] = []
         self._value_cache_values: List[torch.Tensor] = []
 
-        self.max_sparsity = cache_config.max_sparsity
-        self.error_threshold = cache_config.error_threshold
+        self.key_max_sparsity = cache_config.key_max_sparsity
+        self.value_max_sparsity = cache_config.value_max_sparsity
+        self.key_error_threshold = cache_config.key_error_threshold
+        self.value_error_threshold = cache_config.value_error_threshold
         self.buffer_length = cache_config.buffer_length
         self.approximation_length = cache_config.approximation_length
     
@@ -86,8 +92,8 @@ class LexicoCache(DynamicCache):
             raise ValueError
         elif len(self.key_cache) == layer_idx:
             if key_states.shape[-2] > self.buffer_length:
-                keys_crow_indices, keys_col_indices, keys_values = self._compress(key_states[:, :, :-self.buffer_length, :], key_dictionary)
-                values_crow_indices, values_col_indices, values_values = self._compress(value_states[:, :, :-self.buffer_length, :], value_dictionary)
+                keys_crow_indices, keys_col_indices, keys_values = self._compress(key_states[:, :, :-self.buffer_length, :], key_dictionary, self.key_max_sparsity, self.key_error_threshold)
+                values_crow_indices, values_col_indices, values_values = self._compress(value_states[:, :, :-self.buffer_length, :], value_dictionary, self.value_max_sparsity, self.value_error_threshold)
                 
                 self._key_cache_crow_indices.append(keys_crow_indices)
                 self._key_cache_col_indices.append(keys_col_indices)
@@ -133,8 +139,8 @@ class LexicoCache(DynamicCache):
             values_to_return = torch.cat(values_to_return, dim=-2)
 
             if self.key_cache[layer_idx].shape[-2] >= self.buffer_length:
-                keys_crow_indices, keys_col_indices, keys_values = self._compress(self.key_cache[layer_idx][:, :, :self.approximation_length], key_dictionary)
-                values_crow_indices, values_col_indices, values_values = self._compress(self.value_cache[layer_idx][:, :, :self.approximation_length], value_dictionary)
+                keys_crow_indices, keys_col_indices, keys_values = self._compress(self.key_cache[layer_idx][:, :, :self.approximation_length], key_dictionary, self.key_max_sparsity, self.key_error_threshold)
+                values_crow_indices, values_col_indices, values_values = self._compress(self.value_cache[layer_idx][:, :, :self.approximation_length], value_dictionary, self.value_max_sparsity, self.value_error_threshold)
 
                 self._key_cache_crow_indices[layer_idx] = torch.cat([self._key_cache_crow_indices[layer_idx], keys_crow_indices[1:] + self._key_cache_crow_indices[layer_idx][-1]])
                 self._key_cache_col_indices[layer_idx] = torch.cat([self._key_cache_col_indices[layer_idx], keys_col_indices])
@@ -156,7 +162,7 @@ class LexicoCache(DynamicCache):
             return 0
         return self._seen_tokens
     
-    def _compress(self, tensor, dictionary):
+    def _compress(self, tensor, dictionary, max_sparsity, error_threshold):
         CHUNK_SIZE = 20000
 
         head_dim = tensor.shape[-1]
@@ -166,8 +172,8 @@ class LexicoCache(DynamicCache):
             indptr, indices, data = omp(
                 dictionary.unsqueeze(0),
                 reshaped_tensor,
-                self.max_sparsity,
-                self.error_threshold
+                max_sparsity,
+                error_threshold
             )
         else:
             chunks = reshaped_tensor.split(CHUNK_SIZE, dim=1)
@@ -180,8 +186,8 @@ class LexicoCache(DynamicCache):
                 indptr_chunk, indices_chunk, data_chunk = omp(
                     dictionary.unsqueeze(0),
                     chunk,
-                    self.max_sparsity,
-                    self.error_threshold
+                    max_sparsity,
+                    error_threshold
                 )
 
                 indptr = torch.cat([indptr, indptr_chunk[1:] + indptr[-1]])
