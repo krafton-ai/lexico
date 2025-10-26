@@ -1,3 +1,4 @@
-transformers
+transformers==4.49.0
 datasets
 accelerate
+lm_eval==0.4.7
